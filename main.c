@@ -232,7 +232,7 @@ int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
 uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
     uint32_t queuePropertiesCount;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, NULL);
-    VkQueueFamilyProperties* queueProperties = calloc(queuePropertiesCount, sizeof(VkQueueFamilyProperties));
+    VkQueueFamilyProperties queueProperties[queuePropertiesCount];
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, queueProperties);
 
     for(uint32_t i = 0; i < queuePropertiesCount; i++) {
@@ -244,8 +244,6 @@ uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
             return i;
         }
     }
-
-    free(queueProperties);
 
     return UINT32_MAX;
 }
