@@ -78,6 +78,7 @@ typedef struct GraphicsContext {
 
 int initVulkan(GraphicsContext* ctx);
 void getVkInstanceExtensions(const char*const** ext_out, uint32_t* extensionsCount);
+int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device);
 void cleanup(GraphicsContext* ctx);
 void drawFrame(GraphicsContext* ctx);
 
@@ -183,57 +184,47 @@ int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
 
-    SDL_Log("Checking device vulkan version...");
-
-    if (props.apiVersion < VK_API_VERSION_1_3) return 0;
+    if (props.apiVersion < VK_API_VERSION_1_3) 
+    {
+        SDL_Log("Device [%s] Vulkan version less than 1.3!", props.deviceName);
+        return 0;
+    }
 
     uint32_t queuePropertiesCount;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, NULL);
-    VkQueueFamilyProperties* pQueueProperties = calloc(queuePropertiesCount, sizeof(VkQueueFamilyProperties));
+    VkQueueFamilyProperties pQueueProperties[queuePropertiesCount];
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, pQueueProperties);
 
-    SDL_Log("Checking device queues...");
-
-    int hasGraphicsQueue = 0;
-    for(uint32_t i = 0; i < queuePropertiesCount; i++) {
-        VkBool32 isSupportSurface;
+    VkBool32 hasGraphicsQueue = VK_FALSE;
+    for(uint32_t i = 0; i < queuePropertiesCount; i++) 
+    {
+        VkBool32 isSupportSurface = VK_FALSE;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, ctx->surface, &isSupportSurface);
 
-        if (isSupportSurface == VK_FALSE) break;
-
-        if(pQueueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            hasGraphicsQueue = 1;
-            SDL_Log("Has graphics queue!");
+        if(pQueueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && isSupportSurface == VK_TRUE) {
+            hasGraphicsQueue = VK_TRUE;
             break;
         }
     }
-
-    free(pQueueProperties);
 
     if (!hasGraphicsQueue) return 0;
 
     uint32_t extensionPropertiesCount;
     vkEnumerateDeviceExtensionProperties(device, NULL, &extensionPropertiesCount, NULL);
-    VkExtensionProperties* extensionProperties = calloc(extensionPropertiesCount, sizeof(VkExtensionProperties));
+    VkExtensionProperties extensionProperties[extensionPropertiesCount];
     vkEnumerateDeviceExtensionProperties(device, NULL, &extensionPropertiesCount, extensionProperties);
 
-    SDL_Log("Checking device extensions...");
-
-    uint32_t isExtFound = 0;
+    uint32_t extFoundCount = 0;
     for(uint32_t i = 0; i < extensionPropertiesCount; i++) {
         for(uint32_t j = 0; j < ctx->deviceExtensionsCount; j++) {
             if(strcmp(extensionProperties[i].extensionName, ctx->deviceExtensions[j]) == 0) {
-                isExtFound += 1;
+                extFoundCount += 1;
                 break;
             }
         }
     }
 
-    free(extensionProperties);
-
-    if (isExtFound != ctx->deviceExtensionsCount) return 0;
-
-    SDL_Log("Extensions OK!");
+    if (extFoundCount != ctx->deviceExtensionsCount) return 0;
 
     return 1;
 }
