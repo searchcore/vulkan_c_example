@@ -67,11 +67,15 @@ void cleanup(GraphicsContext* ctx);
 void drawFrame(GraphicsContext* ctx);
 
 int main(int argc, char **argv) {
-    GraphicsContext ctx;
+    GraphicsContext ctx = {
+        .framebufferResized = VK_FALSE,
+        .currentFrameIndex = 0,
+        .queueCount = 1,
+        .renderFinishedSemaphore = { VK_NULL_HANDLE },
+        .presentCompleteSemaphore = { VK_NULL_HANDLE },
+        .drawFence = { VK_NULL_HANDLE },
+    };
 
-    ctx.framebufferResized = VK_FALSE;
-    ctx.currentFrameIndex = 0;
-    ctx.queueCount = 1;
     float queuePriorities[1] = { 0.5 };
     ctx.queuePriorities = queuePriorities;
 
@@ -727,8 +731,11 @@ int createGraphicsPipeline(GraphicsContext* ctx) {
 
     if(vkCreateGraphicsPipelines(ctx->device, NULL, 1, &pipelineCI, NULL, &ctx->graphicsPipeline) != VK_SUCCESS) {
         SDL_Log("Failed to create graphics pipeline!");
+        vkDestroyShaderModule(ctx->device, shaderModule, NULL);
         return -1;
     }
+
+    vkDestroyShaderModule(ctx->device, shaderModule, NULL);
 
     return 0;
 }
@@ -1156,4 +1163,38 @@ int initVulkan(GraphicsContext* ctx) {
 
 void cleanup(GraphicsContext* ctx) {
     vkDeviceWaitIdle(ctx->device);
+
+    vkFreeCommandBuffers(ctx->device, ctx->commandPool, sizeof(ctx->commandBuffer) / sizeof(VkCommandBuffer), ctx->commandBuffer);
+
+    for (int i = 0; i < sizeof(ctx->renderFinishedSemaphore) / sizeof(VkSemaphore); i++) 
+    {
+        vkDestroySemaphore(ctx->device, ctx->renderFinishedSemaphore[i], NULL);
+    }
+
+    for (int i = 0; i < sizeof(ctx->presentCompleteSemaphore) / sizeof(VkSemaphore); i++) 
+    {
+        vkDestroySemaphore(ctx->device, ctx->presentCompleteSemaphore[i], NULL);
+    }
+
+    for (int i = 0; i < sizeof(ctx->drawFence) / sizeof(VkFence); i++) 
+    {
+        vkDestroyFence(ctx->device, ctx->drawFence[i], NULL);
+    }
+
+    vkDestroyCommandPool(ctx->device, ctx->commandPool, NULL);
+    vkDestroyPipeline(ctx->device, ctx->graphicsPipeline, NULL);
+    vkDestroyPipelineLayout(ctx->device, ctx->pipelineLayout, NULL);
+
+    for (int i = 0; i < ctx->imageViewCount; i++)
+    {
+        vkDestroyImageView(ctx->device, ctx->imageViews[i], NULL);
+    }
+    
+    vkDestroySwapchainKHR(ctx->device, ctx->swapChain, NULL);
+
+    vkDestroyDevice(ctx->device, NULL);
+    vkDestroyInstance(ctx->instance, NULL);
+
+    SDL_Vulkan_DestroySurface(ctx->instance, ctx->surface, NULL);
+    SDL_DestroyWindow(ctx->window);
 }
