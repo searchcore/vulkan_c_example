@@ -17,6 +17,7 @@ typedef struct GraphicsContext {
     VkInstance inst;
     VkApplicationInfo app_info;
     VkDevice device;
+    VkPhysicalDevice physicalDevice;
 
     uint32_t queues_count;
     float* queue_priorities;
@@ -55,6 +56,8 @@ typedef struct GraphicsContext {
     VkFence drawFence[MAX_FRAMES_IN_FLIGHT];
 
     VkDebugUtilsMessengerEXT debugMessanger;
+
+    VkBool32 framebufferResized;
 } GraphicsContext;
 
 
@@ -67,6 +70,7 @@ void drawFrame(GraphicsContext* g_ctx);
 int main(int argc, char **argv) {
     GraphicsContext g_ctx;
 
+    g_ctx.framebufferResized = VK_FALSE;
     g_ctx.currentFrameIndex = 0;
     g_ctx.queues_count = 1;
     float queue_priorities[1] = { 0.5 };
@@ -106,6 +110,9 @@ int main(int argc, char **argv) {
             switch (event.type){
             case SDL_EVENT_QUIT:
                 shouldClose = 1;
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
+                g_ctx.framebufferResized = VK_TRUE;
                 break;
             }
         }
@@ -439,6 +446,17 @@ int create_swap_chain(GraphicsContext* g_ctx, VkPhysicalDevice physical_device) 
     return 0;
 }
 
+int cleanupSwapChain(GraphicsContext* g_ctx) {
+    for(int i = 0; i < g_ctx->image_view_count; i++){
+        vkDestroyImageView(g_ctx->device, g_ctx->image_views[i], NULL);
+    }
+    g_ctx->image_views = NULL;
+    g_ctx->image_view_count = 0;
+
+    vkDestroySwapchainKHR(g_ctx->device, g_ctx->swapchain, NULL);
+    g_ctx->swapchain = NULL;
+}
+
 int create_surface(GraphicsContext* g_ctx) {
     if(!SDL_Vulkan_CreateSurface(g_ctx->window, g_ctx->inst, NULL, &g_ctx->surface)) {
         SDL_Log("Failed to create surface: %s", SDL_GetError());
@@ -483,6 +501,15 @@ int create_image_views(GraphicsContext* g_ctx) {
     }
     
     return 0;
+}
+
+int recreateSwapChain(GraphicsContext* g_ctx) {
+    vkDeviceWaitIdle(g_ctx->device);
+
+    cleanupSwapChain(g_ctx);
+
+    create_swap_chain(g_ctx, g_ctx->physicalDevice);
+    create_image_views(g_ctx);
 }
 
 int readShader(char* path, uint32_t* shader_size_out, char** shader_code){
@@ -923,13 +950,17 @@ void drawFrame(GraphicsContext* g_ctx) {
     while (VK_TIMEOUT == vkWaitForFences(g_ctx->device, 1, &g_ctx->drawFence[g_ctx->currentFrameIndex], VK_TRUE, UINT64_MAX))
         ;
 
-    vkResetFences(g_ctx->device, 1, &g_ctx->drawFence[g_ctx->currentFrameIndex]);
-
     uint32_t imageIndex;
-
-    if(vkAcquireNextImageKHR(g_ctx->device, g_ctx->swapchain, UINT64_MAX, g_ctx->presentCompleteSemaphore[g_ctx->currentFrameIndex], NULL, &imageIndex) != VK_SUCCESS) {
+    VkResult r = vkAcquireNextImageKHR(g_ctx->device, g_ctx->swapchain, UINT64_MAX, g_ctx->presentCompleteSemaphore[g_ctx->currentFrameIndex], NULL, &imageIndex);
+    if(r == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapChain(g_ctx);
+        return;
+    }else if(r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
         SDL_Log("Failed aquire next image!");
+        return;
     }
+
+    vkResetFences(g_ctx->device, 1, &g_ctx->drawFence[g_ctx->currentFrameIndex]);
 
     VkCommandBufferResetFlags reset_flags = 0;
     vkResetCommandBuffer(g_ctx->commandBuffer[g_ctx->currentFrameIndex], reset_flags);
@@ -959,7 +990,15 @@ void drawFrame(GraphicsContext* g_ctx) {
         .pResults = NULL,
     };
 
-    vkQueuePresentKHR(g_ctx->queue, &present_info);
+    VkResult present_result = vkQueuePresentKHR(g_ctx->queue, &present_info);
+
+    if(present_result == VK_ERROR_OUT_OF_DATE_KHR || g_ctx->framebufferResized) {
+        g_ctx->framebufferResized = VK_FALSE;
+        recreateSwapChain(g_ctx);
+    } else if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+        SDL_Log("Failed aquire next image!");
+        return;
+    }
 
     g_ctx->currentFrameIndex = (g_ctx->currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -1065,6 +1104,8 @@ int init_vulkan(GraphicsContext* g_ctx) {
         SDL_Log("Couldn't find suitable device!");
         return -1;
     }
+
+    g_ctx->physicalDevice = *device;
 
     VkPhysicalDeviceProperties device_props;
     vkGetPhysicalDeviceProperties(*device, &device_props);
