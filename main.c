@@ -8,8 +8,24 @@
 #include <SDL3/SDL_vulkan.h>
 
 
-static const int MAX_FRAMES_IN_FLIGHT = 2;
-static const int MAX_IMAGES_COUNT = 8;
+typedef enum Constants {
+    MAX_FRAMES_IN_FLIGHT = 2,
+    MAX_IMAGES_COUNT = 8,
+    LAYER_COUNT = 1,
+} Constants;
+
+static const char* pInstanceEnabledLayers[LAYER_COUNT] = {
+    "VK_LAYER_KHRONOS_validation"
+};
+
+static const char* deviceExtensions[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+    VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+    VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
+};
+const uint32_t deviceExtensionsCount = sizeof(deviceExtensions) / sizeof(char*);
 
 typedef struct GraphicsContext {
     SDL_Window* window;
@@ -25,10 +41,10 @@ typedef struct GraphicsContext {
     VkQueue presentQueue;
     VkSurfaceKHR surface;
 
-    char** deviceExtensions;
+    const char* const* deviceExtensions;
     uint32_t deviceExtensionsCount;
 
-    char** instanceExtensions;
+    const char* const* instanceExtensions;
     uint32_t instanceExtensionsCount;
 
     uint32_t presentQueueFamilyIdx;
@@ -61,12 +77,22 @@ typedef struct GraphicsContext {
 
 
 int initVulkan(GraphicsContext* ctx);
-void getVkDeviceExtensions(char*** ext_out, uint32_t* extensionsCount);
-void getVkInstanceExtensions(char*** ext_out, uint32_t* extensionsCount);
+void getVkInstanceExtensions(const char*const** ext_out, uint32_t* extensionsCount);
 void cleanup(GraphicsContext* ctx);
 void drawFrame(GraphicsContext* ctx);
 
 int main(int argc, char **argv) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
+        return -1;
+    }
+
+    SDL_Vulkan_LoadLibrary(NULL);
+
+    const char* const* extensions = NULL;
+    uint32_t extensionsCount = 0;
+    getVkInstanceExtensions(&extensions, &extensionsCount);
+
     GraphicsContext ctx = {
         .framebufferResized = VK_FALSE,
         .currentFrameIndex = 0,
@@ -74,17 +100,14 @@ int main(int argc, char **argv) {
         .renderFinishedSemaphore = { VK_NULL_HANDLE },
         .presentCompleteSemaphore = { VK_NULL_HANDLE },
         .drawFence = { VK_NULL_HANDLE },
+        .instanceExtensions = extensions,
+        .instanceExtensionsCount = extensionsCount,
+        .deviceExtensions = deviceExtensions,
+        .deviceExtensionsCount = deviceExtensionsCount,
     };
 
     float queuePriorities[1] = { 0.5 };
     ctx.queuePriorities = queuePriorities;
-
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
-        return -1;
-    }
-
-    SDL_Vulkan_LoadLibrary(NULL);
 
     ctx.window = SDL_CreateWindow(
         "Hello Vulkan",
@@ -96,9 +119,6 @@ int main(int argc, char **argv) {
         SDL_Log("Couldn't create window: %s", SDL_GetError());
         return -1;
     }
-
-    getVkDeviceExtensions(&ctx.deviceExtensions, &ctx.deviceExtensionsCount);
-    getVkInstanceExtensions(&ctx.instanceExtensions, &ctx.instanceExtensionsCount);
 
     if (initVulkan(&ctx) != 0) {
         SDL_Log("Failed to init vulkan!");
@@ -130,25 +150,8 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-void getVkDeviceExtensions(char*** deviceExtensions_out, uint32_t* extensionsCount_out) {
-    char* pBaseExtensions[] = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-        VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
-    };
 
-    #define EXTENSIONS_AMOUNT sizeof(pBaseExtensions) / sizeof(pBaseExtensions[0])
-    char** extensions = SDL_malloc(EXTENSIONS_AMOUNT * sizeof(const char *));
-    memcpy(&extensions[0], pBaseExtensions, EXTENSIONS_AMOUNT * sizeof(pBaseExtensions[0]));
-
-    *extensionsCount_out = EXTENSIONS_AMOUNT;
-    #undef EXTENSIONS_AMOUNT
-
-    *deviceExtensions_out = extensions;
-}
-
-void getVkInstanceExtensions(char*** deviceExtensions_out, uint32_t* extensionsCount_out) {
+void getVkInstanceExtensions(const char*const** deviceExtensions_out, uint32_t* extensionsCount_out) {
     uint32_t countInstanceExtensions;
     const char * const *instanceExtensions = SDL_Vulkan_GetInstanceExtensions(&countInstanceExtensions);
 
@@ -156,21 +159,21 @@ void getVkInstanceExtensions(char*** deviceExtensions_out, uint32_t* extensionsC
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME
     };
 
-    #define EXTENSIONS_AMOUNT sizeof(pBaseExtensions) / sizeof(pBaseExtensions[0])
-    int countExtensions = countInstanceExtensions + EXTENSIONS_AMOUNT;
+    const uint32_t EXTENSIONS_AMOUNT = sizeof(pBaseExtensions) / sizeof(pBaseExtensions[0]);
+
+    uint32_t countExtensions = countInstanceExtensions + EXTENSIONS_AMOUNT;
     SDL_Log("count_extensions: total: %i instance: %i base: %i", countExtensions, countInstanceExtensions, EXTENSIONS_AMOUNT);
     char** extensions = SDL_malloc(countExtensions * sizeof(const char *));
     memcpy(&extensions[0], instanceExtensions, countInstanceExtensions * sizeof(instanceExtensions[0]));
     memcpy(&extensions[countInstanceExtensions], pBaseExtensions, EXTENSIONS_AMOUNT * sizeof(pBaseExtensions[0]));
-    #undef EXTENSIONS_AMOUNT
 
     SDL_Log("Need extensions:");
-    for(int i = 0; i < countExtensions; i++) {
+    for(uint32_t i = 0; i < countExtensions; i++) {
         SDL_Log("%s", extensions[i]);
     }
 
     *extensionsCount_out = countExtensions;
-    *deviceExtensions_out = extensions;
+    *deviceExtensions_out = (const char*const*)extensions;
 }
 
 int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
@@ -192,7 +195,7 @@ int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
     SDL_Log("Checking device queues...");
 
     int hasGraphicsQueue = 0;
-    for(int i = 0; i < queuePropertiesCount; i++) {
+    for(uint32_t i = 0; i < queuePropertiesCount; i++) {
         VkBool32 isSupportSurface;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, ctx->surface, &isSupportSurface);
 
@@ -216,9 +219,9 @@ int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
 
     SDL_Log("Checking device extensions...");
 
-    int isExtFound = 0;
-    for(int i = 0; i < extensionPropertiesCount; i++) {
-        for(int j = 0; j < ctx->deviceExtensionsCount; j++) {
+    uint32_t isExtFound = 0;
+    for(uint32_t i = 0; i < extensionPropertiesCount; i++) {
+        for(uint32_t j = 0; j < ctx->deviceExtensionsCount; j++) {
             if(strcmp(extensionProperties[i].extensionName, ctx->deviceExtensions[j]) == 0) {
                 isExtFound += 1;
                 break;
@@ -241,7 +244,7 @@ uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
     VkQueueFamilyProperties* queueProperties = calloc(queuePropertiesCount, sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, queueProperties);
 
-    for(int i = 0; i < queuePropertiesCount; i++) {
+    for(uint32_t i = 0; i < queuePropertiesCount; i++) {
         VkBool32 isSurfaceSupported;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, ctx->surface, &isSurfaceSupported);
 
@@ -324,7 +327,7 @@ int createLogicalDevice(GraphicsContext* ctx, VkPhysicalDevice device) {
 
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(VkSurfaceFormatKHR* surfaceFormats, uint32_t surfaceFormatsCount) {
-    for(int i = 0; i < surfaceFormatsCount; i++) {
+    for(uint32_t i = 0; i < surfaceFormatsCount; i++) {
         if(surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return surfaceFormats[i];
         }
@@ -334,7 +337,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(VkSurfaceFormatKHR* surfaceFormats, u
 }
 
 VkPresentModeKHR chooseSwapPresentMode(VkPresentModeKHR* presentModes, uint32_t presentModesCount) {
-    for(int i = 0; i < presentModesCount; i++) {
+    for(uint32_t i = 0; i < presentModesCount; i++) {
         if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
             return presentModes[i];
         }
@@ -450,7 +453,7 @@ int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
 }
 
 int cleanupSwapChain(GraphicsContext* ctx) {
-    for(int i = 0; i < ctx->imageViewCount; i++){
+    for(uint32_t i = 0; i < ctx->imageViewCount; i++){
         vkDestroyImageView(ctx->device, ctx->imageViews[i], NULL);
     }
     ctx->imageViews = NULL;
@@ -458,6 +461,8 @@ int cleanupSwapChain(GraphicsContext* ctx) {
 
     vkDestroySwapchainKHR(ctx->device, ctx->swapChain, NULL);
     ctx->swapChain = NULL;
+
+    return 0;
 }
 
 int createSurface(GraphicsContext* ctx) {
@@ -495,7 +500,7 @@ int createImageViews(GraphicsContext* ctx) {
     ctx->imageViewCount = ctx->swapChainImagesCount;
     ctx->imageViews = calloc(ctx->swapChainImagesCount, sizeof(VkImageView));
 
-    for (int i = 0; i < ctx->swapChainImagesCount; i++) {
+    for (uint32_t i = 0; i < ctx->swapChainImagesCount; i++) {
         image_view_create_info.image = (ctx->swapChainImages)[i];
 
         if(vkCreateImageView(ctx->device, &image_view_create_info, VK_NULL_HANDLE, ctx->imageViews + i) != VK_SUCCESS) {
@@ -513,12 +518,16 @@ int recreateSwapChain(GraphicsContext* ctx) {
 
     createSwapChain(ctx, ctx->physicalDevice);
     createImageViews(ctx);
+
+    return 0;
 }
 
 int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out){
-    FILE* shaderFile = fopen("./slang.spv", "rb+");
+    FILE* shaderFile = NULL;
 
-    if (shaderFile == NULL) {
+    errno_t fileOpenError = fopen_s(&shaderFile, path, "rb+");
+
+    if(fileOpenError) {
         return -1;
     }
 
@@ -542,14 +551,14 @@ int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderM
     uint32_t shaderSize;
     char* shaderCode = NULL;
 
-    if (readShader("shader.spv", &shaderSize, &shaderCode)) {
+    if (readShader(path, &shaderSize, &shaderCode)) {
         SDL_Log("Failed to read shader!");
         return -1;
     }
 
-    SDL_Log("Readed shader! %i, %i", shaderSize, shaderCode);
+    SDL_Log("Readed shader! Size: %i bytes", shaderSize);
  
-    VkShaderModuleCreateInfo shader_create_info = {
+    VkShaderModuleCreateInfo shaderModuleCI = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = shaderSize,
         .pCode = (const uint32_t*)shaderCode,
@@ -557,7 +566,7 @@ int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderM
         .flags = 0
     };
 
-    if(vkCreateShaderModule(ctx->device, &shader_create_info, VK_NULL_HANDLE, shaderModule) != VK_SUCCESS) {
+    if(vkCreateShaderModule(ctx->device, &shaderModuleCI, VK_NULL_HANDLE, shaderModule) != VK_SUCCESS) {
         SDL_Log("Failed create shader module!");
         return -1;
     }
@@ -568,7 +577,7 @@ int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderM
 int createGraphicsPipeline(GraphicsContext* ctx) {
     VkShaderModule shaderModule;
     
-    if(createShaderModule(ctx, "shader.spv", &shaderModule)) {
+    if(createShaderModule(ctx, "./slang.spv", &shaderModule)) {
         SDL_Log("Error creating shader!");
         return -1;
     }
@@ -765,7 +774,7 @@ int createCommandBuffers(GraphicsContext* ctx) {
         .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
     };
 
-    if(vkAllocateCommandBuffers(ctx->device, &commandBufferAI, &ctx->commandBuffer) != VK_SUCCESS) {
+    if(vkAllocateCommandBuffers(ctx->device, &commandBufferAI, ctx->commandBuffer) != VK_SUCCESS) {
         SDL_Log("Failed allocate command buffer!");
         return -1;
     }
@@ -849,7 +858,7 @@ int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex) {
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = clearValue,
+        .clearValue = { clearValue },
     };
 
     VkRenderingInfo renderingInfo = {
@@ -922,7 +931,7 @@ int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex) {
 }
 
 int createSyncObjects(GraphicsContext* ctx) {
-    for (int i = 0; i < ctx->swapChainImagesCount; i++) 
+    for (uint32_t i = 0; i < ctx->swapChainImagesCount; i++) 
     {
         VkSemaphoreCreateInfo semaphore_create_info = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -932,7 +941,7 @@ int createSyncObjects(GraphicsContext* ctx) {
         vkCreateSemaphore(ctx->device, &semaphore_create_info, NULL, &ctx->renderFinishedSemaphore[i]);
     }
     
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
     {
         VkSemaphoreCreateInfo semaphore_create_info = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1037,11 +1046,6 @@ int initVulkan(GraphicsContext* ctx) {
         .apiVersion = VK_API_VERSION_1_3,
     };
 
-    const int LAYER_COUNT = 1;
-    const char* ppEnabledLayers[LAYER_COUNT] = {
-        "VK_LAYER_KHRONOS_validation"
-    };
-
     VkInstanceCreateInfo instanceCI = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = NULL,
@@ -1050,7 +1054,7 @@ int initVulkan(GraphicsContext* ctx) {
         .enabledExtensionCount = ctx->instanceExtensionsCount,
         .ppEnabledExtensionNames = ctx->instanceExtensions,
         .enabledLayerCount = LAYER_COUNT,
-        .ppEnabledLayerNames = ppEnabledLayers,
+        .ppEnabledLayerNames = pInstanceEnabledLayers,
     };
 
     uint32_t layerPropsCount;
@@ -1059,7 +1063,7 @@ int initVulkan(GraphicsContext* ctx) {
     VkLayerProperties* pLayerProperties = calloc(layerPropsCount, sizeof(VkLayerProperties));
     vkEnumerateInstanceLayerProperties(&layerPropsCount, pLayerProperties);
 
-    for(int i = 0; i < layerPropsCount; i++) {
+    for(uint32_t i = 0; i < layerPropsCount; i++) {
         SDL_Log("Has Layer: %s", pLayerProperties[i].layerName);
     }
 
@@ -1080,6 +1084,7 @@ int initVulkan(GraphicsContext* ctx) {
     (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
         ctx->instance, "vkCreateDebugUtilsMessengerEXT");
 
+
     vkCreateDebugUtilsMessengerEXT(ctx->instance, &debugCI, NULL, &ctx->debugMessanger);
 
     if(createSurface(ctx)) {
@@ -1095,7 +1100,7 @@ int initVulkan(GraphicsContext* ctx) {
 	vkEnumeratePhysicalDevices(ctx->instance,&deviceCount, pPhysicalDevices);
     VkPhysicalDevice* physicalDevice = NULL;
 
-    for (int i = 0; i < deviceCount; i++) {
+    for (uint32_t i = 0; i < deviceCount; i++) {
         if (isDeviceSuitable(ctx, pPhysicalDevices[i])) {
             physicalDevice = &pPhysicalDevices[i];
             break;
@@ -1166,17 +1171,17 @@ void cleanup(GraphicsContext* ctx) {
 
     vkFreeCommandBuffers(ctx->device, ctx->commandPool, sizeof(ctx->commandBuffer) / sizeof(VkCommandBuffer), ctx->commandBuffer);
 
-    for (int i = 0; i < sizeof(ctx->renderFinishedSemaphore) / sizeof(VkSemaphore); i++) 
+    for (uint32_t i = 0; i < sizeof(ctx->renderFinishedSemaphore) / sizeof(VkSemaphore); i++) 
     {
         vkDestroySemaphore(ctx->device, ctx->renderFinishedSemaphore[i], NULL);
     }
 
-    for (int i = 0; i < sizeof(ctx->presentCompleteSemaphore) / sizeof(VkSemaphore); i++) 
+    for (uint32_t i = 0; i < sizeof(ctx->presentCompleteSemaphore) / sizeof(VkSemaphore); i++) 
     {
         vkDestroySemaphore(ctx->device, ctx->presentCompleteSemaphore[i], NULL);
     }
 
-    for (int i = 0; i < sizeof(ctx->drawFence) / sizeof(VkFence); i++) 
+    for (uint32_t i = 0; i < sizeof(ctx->drawFence) / sizeof(VkFence); i++) 
     {
         vkDestroyFence(ctx->device, ctx->drawFence[i], NULL);
     }
@@ -1185,7 +1190,7 @@ void cleanup(GraphicsContext* ctx) {
     vkDestroyPipeline(ctx->device, ctx->graphicsPipeline, NULL);
     vkDestroyPipelineLayout(ctx->device, ctx->pipelineLayout, NULL);
 
-    for (int i = 0; i < ctx->imageViewCount; i++)
+    for (uint32_t i = 0; i < ctx->imageViewCount; i++)
     {
         vkDestroyImageView(ctx->device, ctx->imageViews[i], NULL);
     }
@@ -1193,8 +1198,16 @@ void cleanup(GraphicsContext* ctx) {
     vkDestroySwapchainKHR(ctx->device, ctx->swapChain, NULL);
 
     vkDestroyDevice(ctx->device, NULL);
-    vkDestroyInstance(ctx->instance, NULL);
 
     SDL_Vulkan_DestroySurface(ctx->instance, ctx->surface, NULL);
+
+    PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = 
+    (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+        ctx->instance, "vkDestroyDebugUtilsMessengerEXT");
+
+    vkDestroyDebugUtilsMessengerEXT(ctx->instance, ctx->debugMessanger, NULL);
+
+    vkDestroyInstance(ctx->instance, NULL);
+
     SDL_DestroyWindow(ctx->window);
 }
