@@ -1119,5 +1119,5 @@ int init_vulkan(GraphicsContext* g_ctx) {
 }
 
 void cleanup(GraphicsContext* g_ctx) {
-
+    vkDeviceWaitIdle(g_ctx->device);
 }
