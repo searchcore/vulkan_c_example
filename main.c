@@ -360,12 +360,12 @@ int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
 
     uint32_t surfaceFormatsCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, ctx->surface, &surfaceFormatsCount, NULL);
-    VkSurfaceFormatKHR* surfaceFormats = calloc(surfaceFormatsCount, sizeof(VkSurfaceFormatKHR));
+    VkSurfaceFormatKHR surfaceFormats[surfaceFormatsCount];
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, ctx->surface, &surfaceFormatsCount, surfaceFormats);
 
     uint32_t presentModesCount;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, ctx->surface, &presentModesCount, NULL);
-    VkPresentModeKHR* presentModes = calloc(surfaceFormatsCount, sizeof(VkSurfaceFormatKHR));
+    VkPresentModeKHR presentModes[presentModesCount];
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, ctx->surface, &presentModesCount, presentModes);
 
     VkSurfaceFormatKHR swapSurfaceFormat = chooseSwapSurfaceFormat(surfaceFormats, surfaceFormatsCount);
@@ -380,9 +380,6 @@ int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
     if (surfaceCaps.maxImageCount > 0 && imageCount > surfaceCaps.maxImageCount) {
         imageCount = surfaceCaps.maxImageCount;
     }
-
-    free(surfaceFormats);
-    free(presentModes);
 
     VkSwapchainCreateInfoKHR swapchain_create_info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -1048,13 +1045,6 @@ int initVulkan(GraphicsContext* ctx) {
 
     uint32_t layerPropsCount;
     vkEnumerateInstanceLayerProperties(&layerPropsCount, NULL);
-
-    VkLayerProperties* pLayerProperties = calloc(layerPropsCount, sizeof(VkLayerProperties));
-    vkEnumerateInstanceLayerProperties(&layerPropsCount, pLayerProperties);
-
-    for(uint32_t i = 0; i < layerPropsCount; i++) {
-        SDL_Log("Has Layer: %s", pLayerProperties[i].layerName);
-    }
 
     if (vkCreateInstance(&instanceCI, NULL, &ctx->instance) != VK_SUCCESS) {
         SDL_Log("Failed to create Vulkan instance!");
