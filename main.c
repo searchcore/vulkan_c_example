@@ -8,6 +8,9 @@
 #include <SDL3/SDL_vulkan.h>
 
 
+static const int MAX_FRAMES_IN_FLIGHT = 2;
+static const int MAX_IMAGES_COUNT = 8;
+
 typedef struct GraphicsContext {
     SDL_Window* window;
 
@@ -43,11 +46,13 @@ typedef struct GraphicsContext {
     VkPipelineLayout pipeline_layout;
     VkPipeline graphicsPipeline;
     VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
 
-    VkSemaphore presentCompleteSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    VkFence drawFence;
+    uint32_t currentFrameIndex;
+    VkCommandBuffer commandBuffer[MAX_FRAMES_IN_FLIGHT];
+
+    VkSemaphore presentCompleteSemaphore[MAX_FRAMES_IN_FLIGHT];
+    VkSemaphore renderFinishedSemaphore[MAX_IMAGES_COUNT];
+    VkFence drawFence[MAX_FRAMES_IN_FLIGHT];
 
     VkDebugUtilsMessengerEXT debugMessanger;
 } GraphicsContext;
@@ -62,6 +67,7 @@ void drawFrame(GraphicsContext* g_ctx);
 int main(int argc, char **argv) {
     GraphicsContext g_ctx;
 
+    g_ctx.currentFrameIndex = 0;
     g_ctx.queues_count = 1;
     float queue_priorities[1] = { 0.5 };
     g_ctx.queue_priorities = queue_priorities;
@@ -717,13 +723,13 @@ int createCommandPool(GraphicsContext* g_ctx) {
     return 0;
 }
 
-int createCommandBuffer(GraphicsContext* g_ctx) {
+int createCommandBuffers(GraphicsContext* g_ctx) {
     VkCommandBufferAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = NULL,
         .commandPool = g_ctx->commandPool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
+        .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
     };
 
     if(vkAllocateCommandBuffers(g_ctx->device, &alloc_info, &g_ctx->commandBuffer) != VK_SUCCESS) {
@@ -772,17 +778,19 @@ int transition_image_layout(
         .pImageMemoryBarriers = &barrier,
     };
 
-    vkCmdPipelineBarrier2(g_ctx->commandBuffer, &dep_info);
+    vkCmdPipelineBarrier2(g_ctx->commandBuffer[g_ctx->currentFrameIndex], &dep_info);
 
     return 0;
 }
 
 int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
+    VkCommandBuffer commandBuffer = g_ctx->commandBuffer[g_ctx->currentFrameIndex];
+
     VkCommandBufferBeginInfo buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     };
 
-    if(vkBeginCommandBuffer(g_ctx->commandBuffer, &buffer_begin_info) != VK_SUCCESS) {
+    if(vkBeginCommandBuffer(commandBuffer, &buffer_begin_info) != VK_SUCCESS) {
         SDL_Log("Failed begin!");
         return -1;
     }
@@ -825,9 +833,9 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
         .pColorAttachments = &attachment_info,
     };
 
-    vkCmdBeginRendering(g_ctx->commandBuffer, &rendering_info);
+    vkCmdBeginRendering(commandBuffer, &rendering_info);
 
-    vkCmdBindPipeline(g_ctx->commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_ctx->graphicsPipeline);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_ctx->graphicsPipeline);
 
     VkViewport viewport = {
         .x = 0,
@@ -839,7 +847,7 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
     };
 
     vkCmdSetViewport(
-        g_ctx->commandBuffer,
+        commandBuffer,
         0,
         1,
         &viewport
@@ -854,15 +862,15 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
     };
 
     vkCmdSetScissor(
-        g_ctx->commandBuffer,
+        commandBuffer,
         0,
         1,
         &scissor
     );
 
-    vkCmdDraw(g_ctx->commandBuffer, 3, 1, 0, 0);
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
-    vkCmdEndRendering(g_ctx->commandBuffer);
+    vkCmdEndRendering(commandBuffer);
 
     transition_image_layout(
         g_ctx,
@@ -875,60 +883,75 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
         VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
     );
 
-    vkEndCommandBuffer(g_ctx->commandBuffer);
+    vkEndCommandBuffer(commandBuffer);
 
     return 0;
 }
 
 int createSyncObjects(GraphicsContext* g_ctx) {
-    VkSemaphoreCreateInfo semaphore = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-    };
+    for (int i = 0; i < g_ctx->swapchain_images_count; i++) 
+    {
+        VkSemaphoreCreateInfo semaphore_create_info = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+        };
+        vkCreateSemaphore(g_ctx->device, &semaphore_create_info, NULL, &g_ctx->renderFinishedSemaphore[i]);
+    }
+    
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
+    {
+        VkSemaphoreCreateInfo semaphore_create_info = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+        };
+        vkCreateSemaphore(g_ctx->device, &semaphore_create_info, NULL, &g_ctx->presentCompleteSemaphore[i]);
 
-    vkCreateSemaphore(g_ctx->device, &semaphore, NULL, &g_ctx->renderFinishedSemaphore);
-    vkCreateSemaphore(g_ctx->device, &semaphore, NULL, &g_ctx->presentCompleteSemaphore);
-
-    VkFenceCreateInfo fence_create_info = {
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-    };
-
-    vkCreateFence(g_ctx->device, &fence_create_info, NULL, &g_ctx->drawFence);
+        VkFenceCreateInfo fence_create_info = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+            .pNext = NULL,
+        };
+        vkCreateFence(g_ctx->device, &fence_create_info, NULL, &g_ctx->drawFence[i]);
+    }
 
     return 0;
 }
 
 void drawFrame(GraphicsContext* g_ctx) {
+    while (VK_TIMEOUT == vkWaitForFences(g_ctx->device, 1, &g_ctx->drawFence[g_ctx->currentFrameIndex], VK_TRUE, UINT64_MAX))
+        ;
+
+    vkResetFences(g_ctx->device, 1, &g_ctx->drawFence[g_ctx->currentFrameIndex]);
+
     uint32_t imageIndex;
 
-    if(vkAcquireNextImageKHR(g_ctx->device, g_ctx->swapchain, UINT64_MAX, g_ctx->presentCompleteSemaphore, NULL, &imageIndex) != VK_SUCCESS) {
+    if(vkAcquireNextImageKHR(g_ctx->device, g_ctx->swapchain, UINT64_MAX, g_ctx->presentCompleteSemaphore[g_ctx->currentFrameIndex], NULL, &imageIndex) != VK_SUCCESS) {
         SDL_Log("Failed aquire next image!");
     }
 
+    VkCommandBufferResetFlags reset_flags = 0;
+    vkResetCommandBuffer(g_ctx->commandBuffer[g_ctx->currentFrameIndex], reset_flags);
     recordCommandBuffer(g_ctx, imageIndex);
-
-    vkResetFences(g_ctx->device, 1, &g_ctx->drawFence);
 
     VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pWaitSemaphores = &g_ctx->presentCompleteSemaphore,
+        .pWaitSemaphores = &g_ctx->presentCompleteSemaphore[g_ctx->currentFrameIndex],
         .waitSemaphoreCount = 1,
         .pWaitDstStageMask = &wait_dst_stage_mask,
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &g_ctx->renderFinishedSemaphore,
-        .pCommandBuffers = &g_ctx->commandBuffer,
+        .pSignalSemaphores = &g_ctx->renderFinishedSemaphore[imageIndex],
+        .pCommandBuffers = &g_ctx->commandBuffer[g_ctx->currentFrameIndex],
         .commandBufferCount = 1,
     };
 
-    vkQueueSubmit(g_ctx->queue, 1, &submit_info, g_ctx->drawFence);
-
-    while (VK_TIMEOUT == vkWaitForFences(g_ctx->device, 1, &g_ctx->drawFence, VK_TRUE, UINT64_MAX))
-        ;
+    vkQueueSubmit(g_ctx->queue, 1, &submit_info, g_ctx->drawFence[g_ctx->currentFrameIndex]);
 
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .pWaitSemaphores = &g_ctx->renderFinishedSemaphore,
+        .pWaitSemaphores = &g_ctx->renderFinishedSemaphore[imageIndex],
         .waitSemaphoreCount = 1,
         .pSwapchains = &g_ctx->swapchain,
         .swapchainCount = 1,
@@ -937,6 +960,8 @@ void drawFrame(GraphicsContext* g_ctx) {
     };
 
     vkQueuePresentKHR(g_ctx->queue, &present_info);
+
+    g_ctx->currentFrameIndex = (g_ctx->currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -1078,7 +1103,7 @@ int init_vulkan(GraphicsContext* g_ctx) {
 
     SDL_Log("Command pool created!");
 
-    if(createCommandBuffer(g_ctx)) {
+    if(createCommandBuffers(g_ctx)) {
         return -1;
     }
 
