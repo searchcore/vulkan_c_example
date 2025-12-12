@@ -9,7 +9,15 @@ project(vulkan_c_example)
 
 add_executable(vulkan_c_example WIN32 main.c)
 
-target_compile_options(vulkan_c_example PRIVATE)
+target_compile_options(vulkan_c_example PRIVATE
+    -g
+    -O0
+    -fno-optimize-sibling-calls
+    -fno-omit-frame-pointer
+    -gdwarf-5
+    -Wall
+    -Wextra
+)
 
 function (add_slang_shader_target TARGET)
     cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
