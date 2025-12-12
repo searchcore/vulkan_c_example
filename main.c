@@ -262,37 +262,40 @@ int createLogicalDevice(GraphicsContext* ctx, VkPhysicalDevice device) {
     ctx->presentQueueFamilyIdx = suitableQueueFamilyIdx;
     ctx->graphicsQueueFamilyIdx = suitableQueueFamilyIdx;
 
-    VkDeviceQueueCreateInfo deviceQueueCI;
-    deviceQueueCI.queueFamilyIndex = suitableQueueFamilyIdx;
-    deviceQueueCI.pQueuePriorities = ctx->queuePriorities;
-    deviceQueueCI.queueCount = ctx->queueCount;
-    deviceQueueCI.pNext = NULL;
-    deviceQueueCI.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    deviceQueueCI.flags = 0;
+    VkDeviceQueueCreateInfo deviceQueueCI = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .queueFamilyIndex = suitableQueueFamilyIdx,
+        .pQueuePriorities = ctx->queuePriorities,
+        .queueCount = ctx->queueCount,
+    };
 
-    VkDeviceCreateInfo deviceCI;
-    deviceCI.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceCI.pNext = NULL;
-    deviceCI.flags = 0;
-    deviceCI.queueCreateInfoCount = 1;
-    deviceCI.pQueueCreateInfos = &deviceQueueCI;
-    deviceCI.enabledLayerCount = 0;
-    deviceCI.ppEnabledLayerNames = NULL;
-    deviceCI.pEnabledFeatures = NULL;
-
-    deviceCI.ppEnabledExtensionNames = ctx->deviceExtensions;
-    deviceCI.enabledExtensionCount = ctx->deviceExtensionsCount;
+    VkDeviceCreateInfo deviceCI = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &deviceQueueCI,
+        .enabledLayerCount = 0,
+        .ppEnabledLayerNames = NULL,
+        .pEnabledFeatures = NULL,
+        .ppEnabledExtensionNames = ctx->deviceExtensions,
+        .enabledExtensionCount = ctx->deviceExtensionsCount,
+    };
     
     VkPhysicalDeviceFeatures2 physicalFeatures2 = { 
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = NULL,
     };
+
     VkPhysicalDeviceVulkan13Features physicalDeviceVk13Features = { 
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .pNext = NULL,
         .synchronization2 = VK_TRUE,
         .dynamicRendering = VK_TRUE,
     };
+
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT phyDeviceExtDynStateFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
         .pNext = NULL,
@@ -404,11 +407,11 @@ int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
         .oldSwapchain = VK_NULL_HANDLE,
     };
 
-    uint32_t q_indicies[2] = {ctx->presentQueueFamilyIdx, ctx->graphicsQueueFamilyIdx};
+    uint32_t pQueueFamilyIndicies[2] = {ctx->presentQueueFamilyIdx, ctx->graphicsQueueFamilyIdx};
     if(ctx->graphicsQueueFamilyIdx == ctx->presentQueueFamilyIdx) {
         swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         swapchain_create_info.queueFamilyIndexCount = 2;
-        swapchain_create_info.pQueueFamilyIndices = q_indicies;
+        swapchain_create_info.pQueueFamilyIndices = pQueueFamilyIndicies;
     } else {
         swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         swapchain_create_info.queueFamilyIndexCount = 0;
@@ -516,16 +519,16 @@ int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out){
     }
 
     fseek(shaderFile, 0, SEEK_END);
-    uint32_t shader_size = ftell(shaderFile);
+    uint32_t shaderSize = ftell(shaderFile);
 
     char* shaderCode = NULL;
-    shaderCode = calloc(shader_size, sizeof(char));
+    shaderCode = calloc(shaderSize, sizeof(char));
 
     rewind(shaderFile);
-    fread(shaderCode, 1, shader_size, shaderFile);
+    fread(shaderCode, 1, shaderSize, shaderFile);
     fclose(shaderFile);
 
-    *shaderSize_out = shader_size;
+    *shaderSize_out = shaderSize;
     *shaderCode_out = shaderCode;
 
     return 0;
@@ -1014,38 +1017,34 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 }
 
 int initVulkan(GraphicsContext* ctx) {
-    VkApplicationInfo appInfo;
-
-    appInfo.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pNext=NULL;
 	char* appName = "Hello Vulkan";
-	appInfo.pApplicationName=appName;
-	appInfo.applicationVersion=VK_MAKE_VERSION(0,0,1);
 	char* appEngineName = "No engine";
-	appInfo.pEngineName=appEngineName;
-	appInfo.engineVersion=VK_MAKE_VERSION(0,0,1);
-	appInfo.apiVersion=VK_API_VERSION_1_3;
 
-    VkInstanceCreateInfo instanceCI;
+    VkApplicationInfo appInfo = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pNext = NULL,
+    	.pApplicationName = appName,
+	    .applicationVersion = VK_MAKE_VERSION(0,0,1),
+    	.pEngineName = appEngineName,
+        .engineVersion = VK_MAKE_VERSION(0,0,1),
+        .apiVersion = VK_API_VERSION_1_3,
+    };
 
-    SDL_Log("Trying to create info!");
-
-	instanceCI.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	instanceCI.pNext=NULL;
-	instanceCI.flags=0;
-	instanceCI.pApplicationInfo=&appInfo;
-	instanceCI.enabledExtensionCount=ctx->instanceExtensionsCount;
-    instanceCI.ppEnabledExtensionNames=ctx->instanceExtensions;
-
-    #define LAYER_COUNT 1
-    
-    instanceCI.enabledLayerCount=LAYER_COUNT;
-    const char* pp_inst_layers[LAYER_COUNT] = {
+    const int LAYER_COUNT = 1;
+    const char* ppEnabledLayers[LAYER_COUNT] = {
         "VK_LAYER_KHRONOS_validation"
     };
-    instanceCI.ppEnabledLayerNames = pp_inst_layers;
 
-    #undef LAYER_COUNT
+    VkInstanceCreateInfo instanceCI = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .pApplicationInfo = &appInfo,
+        .enabledExtensionCount = ctx->instanceExtensionsCount,
+        .ppEnabledExtensionNames = ctx->instanceExtensions,
+        .enabledLayerCount = LAYER_COUNT,
+        .ppEnabledLayerNames = ppEnabledLayers,
+    };
 
     uint32_t layerPropsCount;
     vkEnumerateInstanceLayerProperties(&layerPropsCount, NULL);
