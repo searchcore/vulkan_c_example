@@ -446,6 +446,7 @@ int create_surface(GraphicsContext* g_ctx) {
 
 int create_image_views(GraphicsContext* g_ctx) {
     VkImageViewCreateInfo image_view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .flags = 0,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = g_ctx->swapchain_image_format,
@@ -802,6 +803,7 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
     };
 
     VkRenderingAttachmentInfo attachment_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = g_ctx->image_views[imageIndex],
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -810,6 +812,7 @@ int recordCommandBuffer(GraphicsContext* g_ctx, uint32_t imageIndex) {
     };
 
     VkRenderingInfo rendering_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea = (VkRect2D) {
             .offset = (VkOffset2D){
                 .x = 0,
@@ -908,6 +911,7 @@ void drawFrame(GraphicsContext* g_ctx) {
 
     VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pWaitSemaphores = &g_ctx->presentCompleteSemaphore,
         .waitSemaphoreCount = 1,
         .pWaitDstStageMask = &wait_dst_stage_mask,
@@ -923,6 +927,7 @@ void drawFrame(GraphicsContext* g_ctx) {
         ;
 
     VkPresentInfoKHR present_info = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pWaitSemaphores = &g_ctx->renderFinishedSemaphore,
         .waitSemaphoreCount = 1,
         .pSwapchains = &g_ctx->swapchain,
