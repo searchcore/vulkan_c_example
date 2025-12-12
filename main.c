@@ -79,8 +79,36 @@ typedef struct GraphicsContext {
 int initVulkan(GraphicsContext* ctx);
 void getVkInstanceExtensions(const char*const** ext_out, uint32_t* extensionsCount);
 int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device);
+uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device);
+int createLogicalDevice(GraphicsContext* ctx, VkPhysicalDevice device);
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(VkSurfaceFormatKHR* surfaceFormats, uint32_t surfaceFormatsCount);
+VkPresentModeKHR chooseSwapPresentMode(VkPresentModeKHR* presentModes, uint32_t presentModesCount);
+VkExtent2D chooseSwapExtent(GraphicsContext* ctx, VkSurfaceCapabilitiesKHR* caps);
+int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device);
+int cleanupSwapChain(GraphicsContext* ctx);
+int createSurface(GraphicsContext* ctx);
+int createImageViews(GraphicsContext* ctx);
+int recreateSwapChain(GraphicsContext* ctx);
+int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out);
+int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderModule);
+int createGraphicsPipeline(GraphicsContext* ctx);
+int createCommandPool(GraphicsContext* ctx);
+int createCommandBuffers(GraphicsContext* ctx);
+int transitionImageLayout(GraphicsContext* ctx, uint32_t imageIndex, VkImageLayout oldLayout, VkImageLayout newLayout,
+    VkAccessFlags2 srcAccessMask, VkAccessFlags2 dstAccessMask, VkPipelineStageFlags2 srcStageMask, VkPipelineStageFlags2 dstStageMask);
+int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex);
+int createSyncObjects(GraphicsContext* ctx);
+VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, 
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void* _);
 void cleanup(GraphicsContext* ctx);
 void drawFrame(GraphicsContext* ctx);
+
+
+int clamp(int d, int min, int max) {
+  const int t = d < min ? min : d;
+  return t > max ? max : t;
+}
+
 
 int main(int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -177,6 +205,7 @@ void getVkInstanceExtensions(const char*const** deviceExtensions_out, uint32_t* 
     *deviceExtensions_out = (const char*const*)extensions;
 }
 
+
 int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
@@ -229,6 +258,7 @@ int isDeviceSuitable(GraphicsContext* ctx, VkPhysicalDevice device) {
     return 1;
 }
 
+
 uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
     uint32_t queuePropertiesCount;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queuePropertiesCount, NULL);
@@ -247,6 +277,7 @@ uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
 
     return UINT32_MAX;
 }
+
 
 int createLogicalDevice(GraphicsContext* ctx, VkPhysicalDevice device) {
     uint32_t suitableQueueFamilyIdx = findQueueIdx(ctx, device);
@@ -325,6 +356,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(VkSurfaceFormatKHR* surfaceFormats, u
     return surfaceFormats[0];
 }
 
+
 VkPresentModeKHR chooseSwapPresentMode(VkPresentModeKHR* presentModes, uint32_t presentModesCount) {
     for(uint32_t i = 0; i < presentModesCount; i++) {
         if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -335,10 +367,6 @@ VkPresentModeKHR chooseSwapPresentMode(VkPresentModeKHR* presentModes, uint32_t 
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-int clamp(int d, int min, int max) {
-  const int t = d < min ? min : d;
-  return t > max ? max : t;
-}
 
 VkExtent2D chooseSwapExtent(GraphicsContext* ctx, VkSurfaceCapabilitiesKHR* caps) {
     if (caps->currentExtent.height != UINT32_MAX) {
@@ -353,6 +381,7 @@ VkExtent2D chooseSwapExtent(GraphicsContext* ctx, VkSurfaceCapabilitiesKHR* caps
         .height = clamp(height, caps->minImageExtent.height, caps->maxImageExtent.height)
     };
 }
+
 
 int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
     VkSurfaceCapabilitiesKHR surfaceCaps;
@@ -438,6 +467,7 @@ int createSwapChain(GraphicsContext* ctx, VkPhysicalDevice physical_device) {
     return 0;
 }
 
+
 int cleanupSwapChain(GraphicsContext* ctx) {
     for(uint32_t i = 0; i < ctx->imageViewCount; i++){
         vkDestroyImageView(ctx->device, ctx->imageViews[i], NULL);
@@ -451,6 +481,7 @@ int cleanupSwapChain(GraphicsContext* ctx) {
     return 0;
 }
 
+
 int createSurface(GraphicsContext* ctx) {
     if(!SDL_Vulkan_CreateSurface(ctx->window, ctx->instance, NULL, &ctx->surface)) {
         SDL_Log("Failed to create surface: %s", SDL_GetError());
@@ -461,6 +492,7 @@ int createSurface(GraphicsContext* ctx) {
 
     return 0;
 }
+
 
 int createImageViews(GraphicsContext* ctx) {
     VkImageViewCreateInfo image_view_create_info = {
@@ -497,6 +529,7 @@ int createImageViews(GraphicsContext* ctx) {
     return 0;
 }
 
+
 int recreateSwapChain(GraphicsContext* ctx) {
     vkDeviceWaitIdle(ctx->device);
 
@@ -508,7 +541,8 @@ int recreateSwapChain(GraphicsContext* ctx) {
     return 0;
 }
 
-int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out){
+
+int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out) {
     FILE* shaderFile = NULL;
 
     errno_t fileOpenError = fopen_s(&shaderFile, path, "rb+");
@@ -532,6 +566,7 @@ int readShader(char* path, uint32_t* shaderSize_out, char** shaderCode_out){
 
     return 0;
 }
+
 
 int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderModule) {
     uint32_t shaderSize;
@@ -559,6 +594,7 @@ int createShaderModule(GraphicsContext* ctx, char* path, VkShaderModule* shaderM
 
     return 0;
 }
+
 
 int createGraphicsPipeline(GraphicsContext* ctx) {
     VkShaderModule shaderModule;
@@ -735,6 +771,7 @@ int createGraphicsPipeline(GraphicsContext* ctx) {
     return 0;
 }
 
+
 int createCommandPool(GraphicsContext* ctx) {
     VkCommandPoolCreateInfo commandPoolCI = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -750,6 +787,7 @@ int createCommandPool(GraphicsContext* ctx) {
 
     return 0;
 }
+
 
 int createCommandBuffers(GraphicsContext* ctx) {
     VkCommandBufferAllocateInfo commandBufferAI = {
@@ -767,6 +805,7 @@ int createCommandBuffers(GraphicsContext* ctx) {
     
     return 0;
 }
+
 
 int transitionImageLayout(
     GraphicsContext* ctx,
@@ -810,6 +849,7 @@ int transitionImageLayout(
 
     return 0;
 }
+
 
 int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex) {
     VkCommandBuffer commandBuffer = ctx->commandBuffer[ctx->currentFrameIndex];
@@ -916,6 +956,7 @@ int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex) {
     return 0;
 }
 
+
 int createSyncObjects(GraphicsContext* ctx) {
     for (uint32_t i = 0; i < ctx->swapChainImagesCount; i++) 
     {
@@ -946,6 +987,7 @@ int createSyncObjects(GraphicsContext* ctx) {
 
     return 0;
 }
+
 
 void drawFrame(GraphicsContext* ctx) {
     while (VK_TIMEOUT == vkWaitForFences(ctx->device, 1, &ctx->drawFence[ctx->currentFrameIndex], VK_TRUE, UINT64_MAX))
@@ -1004,6 +1046,7 @@ void drawFrame(GraphicsContext* ctx) {
     ctx->currentFrameIndex = (ctx->currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity, 
     VkDebugUtilsMessageTypeFlagsEXT type, 
@@ -1017,6 +1060,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 
     return VK_FALSE;
 }
+
 
 int initVulkan(GraphicsContext* ctx) {
 	char* appName = "Hello Vulkan";
@@ -1144,6 +1188,7 @@ int initVulkan(GraphicsContext* ctx) {
 
     return 0;
 }
+
 
 void cleanup(GraphicsContext* ctx) {
     vkDeviceWaitIdle(ctx->device);
