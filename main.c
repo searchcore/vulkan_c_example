@@ -104,8 +104,6 @@ int transitionImageLayout(GraphicsContext* ctx, uint32_t imageIndex, VkImageLayo
     VkAccessFlags2 srcAccessMask, VkAccessFlags2 dstAccessMask, VkPipelineStageFlags2 srcStageMask, VkPipelineStageFlags2 dstStageMask);
 int recordCommandBuffer(GraphicsContext* ctx, uint32_t imageIndex);
 int createSyncObjects(GraphicsContext* ctx);
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, 
-    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void* _);
 void cleanup(GraphicsContext* ctx);
 void drawFrame(GraphicsContext* ctx);
 
@@ -1109,11 +1107,6 @@ int initVulkan(GraphicsContext* ctx) {
         .pfnUserCallback = debugCallback,
     };
 
-    PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = 
-    (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-        ctx->instance, "vkCreateDebugUtilsMessengerEXT");
-
-
     vkCreateDebugUtilsMessengerEXT(ctx->instance, &debugCI, NULL, &ctx->debugMessanger);
 
     if(createSurface(ctx)) {
@@ -1230,10 +1223,6 @@ void cleanup(GraphicsContext* ctx) {
     vkDestroyDevice(ctx->device, NULL);
 
     SDL_Vulkan_DestroySurface(ctx->instance, ctx->surface, NULL);
-
-    PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = 
-    (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-        ctx->instance, "vkDestroyDebugUtilsMessengerEXT");
 
     vkDestroyDebugUtilsMessengerEXT(ctx->instance, ctx->debugMessanger, NULL);
 
