@@ -14,6 +14,17 @@
 #include <SDL3/SDL_vulkan.h>
 
 
+const char* APP_NAME = "Hello Vulkan";
+const char* APP_ENGINE_NAME = "No engine";
+const uint32_t APP_VERSION = VK_MAKE_VERSION(0,0,1);
+const uint32_t ENGINE_VERSION = VK_MAKE_VERSION(0,0,1);
+const uint32_t VK_API_VERSION = VK_API_VERSION_1_3;
+
+const char* WINDOW_TITLE = "Hello Vulkan";
+#define WINDOW_INITIAL_WIDTH 640
+#define WINDOW_INITIAL_HEIGHT 480
+
+
 typedef enum Constants {
     MAX_FRAMES_IN_FLIGHT = 2,
     MAX_IMAGES_COUNT = 8,
@@ -141,8 +152,8 @@ int main(int argc, char **argv) {
     ctx.queuePriorities = queuePriorities;
 
     ctx.window = SDL_CreateWindow(
-        "Hello Vulkan",
-        640, 480,
+        WINDOW_TITLE,
+        WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN
     );
 
@@ -1066,17 +1077,14 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 
 
 int initVulkan(GraphicsContext* ctx) {
-	char* appName = "Hello Vulkan";
-	char* appEngineName = "No engine";
-
     VkApplicationInfo appInfo = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext = NULL,
-    	.pApplicationName = appName,
-	    .applicationVersion = VK_MAKE_VERSION(0,0,1),
-    	.pEngineName = appEngineName,
-        .engineVersion = VK_MAKE_VERSION(0,0,1),
-        .apiVersion = VK_API_VERSION_1_3,
+    	.pApplicationName = APP_NAME,
+	    .applicationVersion = APP_VERSION,
+    	.pEngineName = APP_ENGINE_NAME,
+        .engineVersion = ENGINE_VERSION,
+        .apiVersion = VK_API_VERSION,
     };
 
     VkInstanceCreateInfo instanceCI = {
