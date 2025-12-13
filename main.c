@@ -274,7 +274,6 @@ uint32_t findQueueIdx(GraphicsContext* ctx, VkPhysicalDevice device) {
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, ctx->surface, &isSurfaceSupported);
 
         if((queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && (isSurfaceSupported == VK_TRUE)) {
-            free(queueProperties);
             return i;
         }
     }
