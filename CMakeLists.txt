@@ -49,6 +49,6 @@ target_include_directories(vulkan_c_example PRIVATE "$ENV{VK_SDK_PATH}/Include")
 
 message(STATUS "$ENV{VK_SDK_PATH}")
 
-# Link to the actual SDL3 library.
+add_subdirectory(volk)
 target_link_libraries(vulkan_c_example PRIVATE SDL3::SDL3)
-target_link_libraries(vulkan_c_example PUBLIC "$ENV{VK_SDK_PATH}/Lib/vulkan-1.lib")
+target_link_libraries(vulkan_c_example PRIVATE volk_headers)

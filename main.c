@@ -1,7 +1,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define VOLK_IMPLEMENTATION
+#define VK_USE_PLATFORM_WIN32_KHR
+
+#define VK_NO_PROTOTYPES 
+
 #include <vulkan/vulkan.h>
+#include "volk.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -115,8 +121,6 @@ int main(int argc, char **argv) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return -1;
     }
-
-    SDL_Vulkan_LoadLibrary(NULL);
 
     const char* const* extensions = NULL;
     uint32_t extensionsCount = 0;
@@ -336,6 +340,8 @@ int createLogicalDevice(GraphicsContext* ctx, VkPhysicalDevice device) {
     if (vkCreateDevice(device, &deviceCI, NULL, &ctx->device) != VK_SUCCESS) {
         return -1;
     }
+
+    volkLoadDevice(ctx->device);
 
     SDL_Log("Logical device created!");
 
@@ -1087,14 +1093,15 @@ int initVulkan(GraphicsContext* ctx) {
         .ppEnabledLayerNames = pInstanceEnabledLayers,
     };
 
-    uint32_t layerPropsCount;
-    vkEnumerateInstanceLayerProperties(&layerPropsCount, NULL);
+    SDL_Vulkan_LoadLibrary(NULL);
+    volkInitializeCustom((PFN_vkGetInstanceProcAddr) SDL_Vulkan_GetVkGetInstanceProcAddr());
 
     if (vkCreateInstance(&instanceCI, NULL, &ctx->instance) != VK_SUCCESS) {
         SDL_Log("Failed to create Vulkan instance!");
-    } else {
-        SDL_Log("Vulkan instance created!");
     }
+
+    volkLoadInstanceOnly(ctx->instance);
+    SDL_Log("Vulkan instance created!");
 
     VkDebugUtilsMessengerCreateInfoEXT debugCI = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
